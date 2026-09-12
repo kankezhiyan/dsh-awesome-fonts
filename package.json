@@ -1,0 +1,56 @@
+{
+  "name": "dsh-awesome-fonts",
+  "version": "1.0.0",
+  "description": "Font switcher for the DeepSeek Harness Web GUI: 99 UI fonts (Chinese sans / serif / kai-fangsong / display plus Latin serif / sans / display) and 31 code fonts, with CJK-Latin pairing stacks, instant apply and localStorage persistence",
+  "license": "MIT",
+  "author": "看客之眼 <361876798whyr@sina.com>",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "scripts": {
+    "check": "node --check index.js && node --check client.js",
+    "test": "node test/smoke.mjs"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "plugin",
+    "dsh-plugin",
+    "font",
+    "fonts",
+    "font-family",
+    "cjk",
+    "web-ui"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-locale"
+      ],
+      "platform": "web",
+      "immediately": true
+    }
+  },
+  "peerDependencies": {
+    "react": "^18.2.0",
+    "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/dsh-client-store": "^0.1.2-alpha.1",
+    "@deepseek-ai/dsh-client-locale": "^0.1.2-alpha.1"
+  }
+}
