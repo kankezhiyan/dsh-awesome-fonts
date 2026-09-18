@@ -126,17 +126,27 @@ Web shell 的 `ui-theme` 基座在 `:root` 上声明两个字体变量：
 
 所有字号排版 token（`--dsw-font-xs-13`、`--dsw-font-base-16`、`--dsw-font-markdown-*`、…）
 都以 `var(--dsw-font-family)` 收尾，代码面统一用 `var(--ds-font-family-code)`。
-插件往 `<head>` 注入一个带 `data-plugin` / `data-plugin-css` 标记的 `<style>`：
+插件往 `<head>` 注入一个带 `data-plugin` / `data-plugin-css` 标记的 `<style>`，
+**每个选择器一条独立规则**：
 
 ```css
-:root:root, body:body { --dsw-font-family: <所选栈>; --ds-font-family-code: <所选栈>; }
+:root:root { --dsw-font-family: <所选栈> !important; --ds-font-family-code: <所选栈> !important; }
+html body { --dsw-font-family: <所选栈> !important; --ds-font-family-code: <所选栈> !important; }
 ```
 
-选择器**故意重复写**：`:root:root` 的特异性是 (0,2,0)，高于基座的 `:root` (0,1,0)，
-所以与样式表先后无关。这一点必须这么处理 —— 插件 bundle 一物化就把 `<style>` 追加进
-`document.head`，而 `ui-theme` 属于更晚的启动层级，两者顺序并不保证；若用同特异性的 `:root`，
-就会在源顺序上输给基座。改动只涉及一个文本节点，不触碰任何组件与 DOM 结构。
-
+- `:root:root`（0,2,0）**高过**基座的 `:root`（0,1,0），与样式表先后无关 —— 必须如此：
+  插件 bundle 一物化就把 `<style>` 追加进 `document.head`，而 `ui-theme` 属于更晚的启动层级，
+  用同特异性的 `:root` 会在源顺序上输给基座。
+- `html body` 把声明落在 `body` 元素本身：`--dsw-font-*` 系列 token 声明在 `body` 上、
+  在 `body` 上做 `var(--dsw-font-family)` 替换计算，因此正文/标题/markdown/表格全都跟随所选栈。
+- `!important` 用于压过皮肤或其它插件后写入的同名声明。
+- **两个选择器必须分成两条规则，且都不能写成重复类型选择器。** 选择器列表里只要有一个
+  非法选择器，整条规则会被浏览器**整体丢弃**；而 `body:body` 正是非法的（复合选择器里类型
+  选择器只能出现一次，Chromium 里 `document.querySelectorAll('body:body')` 直接抛
+  "is not a valid selector"），`:root:root` 这种重复伪类才是合法的。v1.0.0 写的是
+  `:root:root, body:body { … }` —— 整条规则 `cssRules.length === 0`，从未进入层叠，
+  这就是「设置页交互正常、换字体毫无效果」的原因。拆成两条规则后，改坏其中一条也不会
+  连坐另一条。
 - 字体目录每条都带 `group`（决定 `<optgroup>`）与 `stack`（主字体 + 中西文回退栈）；
   列表里同时写中文名与英文名，字体安装在任一名下都能命中；
 - 未安装的字体会被浏览器按栈内顺序回退，**不会报错、不会下载**；
@@ -145,22 +155,23 @@ Web shell 的 `ui-theme` 基座在 `:root` 上声明两个字体变量：
 ## 开发
 
 ```powershell
-npm run check   # node --check index.js && node --check client.js
-npm test        # test/smoke.mjs：18 项静态 + 运行时契约检查
-node test/install-check.mjs "$env:DSH_HOME\profiles\Test"   # 装好后的解析/加载校验
+npm run check       # node --check index.js && node --check client.js
+npm test            # test/smoke.mjs：目录 / 分组 / i18n / 注入 CSS 与生命周期的静态+运行时契约
+npm run test:install  # test/install-check.mjs [profileDir]：装进 profile 之后的解析/组合/行为校验
+                      # 默认 $DSH_HOME\profiles\Test；profile 或包不存在时打印原因并跳过
 ```
 
 > 如果 PowerShell 提示「禁止运行脚本」（npm.ps1），用 `npm.cmd run check` / `npm.cmd test`，
 > 或直接 `node test/smoke.mjs`。
 
-`test/smoke.mjs` 用真实 bundle 做端到端冒烟：捕获 `window.__ModuleLoader__.load` 的注册、
-用 shell 的静态模块表 mock `require`、跑 `apply(ctx)`、断言目录计数 / 分组 / i18n 键对齐 /
-注入的 CSS 与选择器特异性 / localStorage 读写 / 非法 id 回退 / 卸载清理 / 分区组件渲染。
-改字体表或文案后跑一次即可，无需启动 DSH。
-
-`test/install-check.mjs` 针对「装进 profile 之后」的路径：用 profile 目录做 `require.resolve`、
-读包清单校验 `exports["./client"]` 与 `dsh.client`、导入 host 半侧、用 fake `window` 执行
-bundle、并从已安装 DSH 的 `app.asar` 里取出 shell 的静态模块表逐个核对 `require` 目标。
+`test/harness.mjs` 提供极小的假页面（`window.__ModuleLoader__` + `localStorage` + `document` 的
+`head/createElement/getElementById`）与假 cordis 上下文，用真实 bundle 跑 `apply(ctx)`：
+`test/smoke.mjs` 断言 99 / 31 字体目录、分组与中英键集对齐、`settings.section` 注册契约、
+选择 → 注入 CSS → localStorage → 重载恢复 → 卸载清理的全链路，并**专门守住选择器契约**
+（两条规则、合法选择器、无 `body:body` 之类的重复简单选择器），防止这次的回归再次发生。
+`test/install-check.mjs` 针对已安装 profile：解析包、校验 `exports["./client"]` /
+`dsh.client` / bundle patch / `dsh.profile.bundles`，再对装好的 `client.js` 跑一遍同样的
+CSS 契约。
 
 文件分工：
 
@@ -169,8 +180,9 @@ bundle、并从已安装 DSH 的 `app.asar` 里取出 shell 的静态模块表�
 | `cordis.patch.yml` | host 侧 loader 入口：`{ id: dsh-awesome-fonts, name: 'dsh-awesome-fonts' }` |
 | `index.js` | host 半侧（空实现）——全部功能在浏览器半侧 |
 | `client.js` | 浏览器半侧：字体目录、注入样式、设置分区、localStorage 持久化 |
+| `test/harness.mjs` | 假 window/document/cordis 上下文 + bundle 加载器 |
 | `test/smoke.mjs` | bundle 的静态 + 运行时冒烟测试 |
-| `test/install-check.mjs` | 针对已安装 profile 的解析 / 加载校验 |
+| `test/install-check.mjs` | 针对已安装 profile 的解析 / 组合 / 加载校验 |
 
 浏览器半侧对外的依赖只有 shell 冻结模块表里的 `react` / `react/jsx-runtime` /
 `@deepseek-ai/dsh-client-store`（`defineStore`），并要求 `slots`（分区席位）与 `locale`
@@ -178,6 +190,14 @@ bundle、并从已安装 DSH 的 `app.asar` 里取出 shell 的静态模块表�
 
 ### 变更记录
 
+- **v1.0.1** — 修复「设置页正常但换字体毫无效果」：注入的规则原本写成
+  `:root:root, body:body { … }`，其中 `body:body` 是**非法选择器**（复合选择器里类型选择器
+  只能出现一次），而选择器列表里只要有一个非法选择器就会被浏览器整条丢弃 —— 规则
+  `cssRules.length === 0`，从未进入层叠。现改为**每个选择器一条独立规则**
+  （`:root:root` 与 `html body`），并加 `!important`；选择器契约已在真实 Chromium 中验证
+  （`:root:root` 合法并生效，`body:body` 抛 "not a valid selector"）。同时补上
+  `test/harness.mjs` / `test/smoke.mjs` / `test/install-check.mjs`（此前 `package.json`
+  声明了 `npm test` 但仓库里没有 `test/` 目录）。
 - **v1.0.0** — 首个版本：设置面板中单开「全局字体」标签页（`settings.section`，
   `id: dsh-awesome-fonts`，`order: 50`），两个字体下拉 + 预览条，99 / 31 字体目录，
   中英双语文案，`localStorage` 持久化。
@@ -194,7 +214,8 @@ bundle、并从已安装 DSH 的 `app.asar` 里取出 shell 的静态模块表�
 | 与服务/事件交互 | 只用 `ctx.slots` / `ctx.locale` / `ctx.effect`，都已在 `inject` 中声明或是 cordis 生命周期 API；未使用未声明的 `ctx.xxx` |
 | 分区注册契约 | `settings.section` 是 `list` slot，需要 `id`；`label` 用 thunk 以便跟随语言切换；`inject(actions)` 的返回值即分区 props，与 shell 的 `standardKit` 一致 |
 | `defineStore` 用法 | 与随包的 `@deepseek-ai/dsh-client-store` 同形（`init` + `actions` 草稿改写）；`store` 句柄经 `register` 的 store 席位解析为 `useStore` + `actions`，分区组件拿到 uSES 选择器 hook |
-| CSS 优先级 | `:root:root, body:body`（0,2,0）压过基座 `:root`（0,1,0），与样式表顺序无关；冒烟测试会断言这个特异性，防止被改回同特异性的 `:root, body` |
+| CSS 优先级 | 两条独立规则：`:root:root`（0,2,0）压过基座 `:root`（0,1,0）；`html body`（0,0,2）把声明落到 `body` 本身，让 body 上声明、在 body 上做 `var()` 替换的 `--dsw-font-*` token 跟随；均带 `!important`。冒烟测试断言「一条选择器一条规则 / 只有合法选择器 / 不含重复简单选择器」，防止再写回 `body:body` |
+| 选择器合法性 | 已用真实 Chromium 验证：`:root:root`、`html body` 合法；`body:body` 非法，且会让所在选择器列表**整条规则**被丢弃（这正是 v1.0.0 失效的原因） |
 | 数据来源 | 字体栈全部是仓库内的字面量，不含用户输入，不存在 CSS 注入面；`localStorage` 读写都有 try/catch，隐私模式/超额时仅退化为「本次会话内有效」 |
 | 生命周期 | 样式元素由 `ctx.effect` 清理；选择失败（未知 id）按默认值处理，不抛错 |
 

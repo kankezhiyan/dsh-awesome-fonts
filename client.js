@@ -20,10 +20,11 @@
 // Every --dsw-font-* token (markdown base, headings, table, xs..xl scale)
 // references --dsw-font-family; every code surface (code blocks, terminal,
 // JSON tree, diff) references --ds-font-family-code. The override is declared
-// on `:root:root, body:body` — the doubled selectors out-specify the base
-// `:root` rule (0,2,0 vs 0,1,0), so it wins regardless of which stylesheet
-// lands first. No component changes and no bundled font files: the stacks name
-// fonts already installed on the system, so nothing is downloaded.
+// as TWO SEPARATE valid rules — `:root:root` (0,2,0) and `html body` — each
+// with `!important`, so it wins over the base `:root` (0,1,0) regardless of
+// which stylesheet lands first. No component changes and no bundled font
+// files: the stacks name fonts already installed on the system, so nothing is
+// downloaded.
 // The injected <style> carries the `data-plugin`/`data-plugin-css` markers
 // the client-modules HMR driver inventories, exactly like shipped bundles.
 //
@@ -57,6 +58,15 @@ window.__ModuleLoader__.load({
 		const PLUGIN_CSS_TAG = "dsh-awesome-fonts/style";
 		/** Sentinel meaning "no override — follow the built-in font". */
 		const DEFAULT_FONT = "default";
+		/**
+		 * Selectors the override is declared on, one rule each. Both are valid
+		 * CSS that matches the document root and the body element; `:root:root`
+		 * (0,2,0) out-specifies the ui-theme base's `:root` (0,1,0), and
+		 * `html body` puts the declaration on the body element itself. Never add
+		 * a selector with a repeated type selector (`body:body`) — it is invalid
+		 * and, inside a list, it would discard every rule in that list.
+		 */
+		const OVERRIDE_SELECTORS = [":root:root", "html body"];
 
 		/**
 		 * UI font catalog. Every entry pairs a primary family with a
@@ -313,9 +323,25 @@ window.__ModuleLoader__.load({
 		 * stylesheet reaches the document (ui-theme is a later boot tier), so an
 		 * equal-specificity `:root` rule would lose on source order. `:root:root`
 		 * (0,2,0) therefore deliberately out-specifies the base `:root` (0,1,0),
-		 * and `body:body` covers the body-scoped declarations — doubling a
-		 * selector is valid CSS and makes the override order-independent. An
-		 * empty rule set (both fonts default) leaves the built-in fonts untouched.
+		 * and `html body` carries the declaration on the body element itself, so
+		 * the body-scoped `--dsw-font-*` tokens (declared on `body` and resolving
+		 * `var(--dsw-font-family)` at computed-value time there) follow the
+		 * choice. `!important` keeps a later declaration from a skin or another
+		 * plugin from winning on source order or specificity.
+		 *
+		 * The two selectors are emitted as SEPARATE rules on purpose. A selector
+		 * list is discarded as a whole when any one selector in it is invalid —
+		 * and `body:body` IS invalid (a type selector may appear only once in a
+		 * compound selector; Chromium rejects it: `document.querySelectorAll(
+		 * 'body:body')` throws "is not a valid selector", while `:root:root` is
+		 * accepted). v1.0.0 shipped `:root:root, body:body { … }`, so Chromium
+		 * dropped the entire rule (cssRules length 0) and the font never changed
+		 * — the UI stayed fully interactive, which is exactly how the bug looked.
+		 * Writing one selector per rule means a future edit to either one can
+		 * never silently void the other.
+		 *
+		 * An empty rule set (both fonts default) leaves the built-in fonts
+		 * untouched.
 		 *
 		 * The whole body is guarded: a non-DOM boot (tests, SSR-ish harnesses)
 		 * must degrade to "no override" instead of throwing inside apply() and
@@ -325,10 +351,14 @@ window.__ModuleLoader__.load({
 			if (typeof document === "undefined" || document === null) return;
 			const ui = UI_FONTS.find((f) => f.id === uiId) || null;
 			const code = CODE_FONTS.find((f) => f.id === codeId) || null;
-			const rules = [];
-			if (ui !== null && ui.stack !== null) rules.push(`--dsw-font-family: ${ui.stack};`);
-			if (code !== null && code.stack !== null) rules.push(`--ds-font-family-code: ${code.stack};`);
-			getStyleEl().textContent = rules.length > 0 ? `:root:root, body:body { ${rules.join(" ")} }` : "";
+			const declarations = [];
+			if (ui !== null && ui.stack !== null) declarations.push(`--dsw-font-family: ${ui.stack} !important;`);
+			if (code !== null && code.stack !== null) declarations.push(`--ds-font-family-code: ${code.stack} !important;`);
+			getStyleEl().textContent = declarations.length === 0
+				? ""
+				: OVERRIDE_SELECTORS
+					.map((selector) => `${selector} { ${declarations.join(" ")} }`)
+					.join("\n");
 		}
 
 		/** Remove the injected style element (fiber unload). */

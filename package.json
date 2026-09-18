@@ -1,6 +1,6 @@
 {
   "name": "dsh-awesome-fonts",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Font switcher for the DeepSeek Harness Web GUI: 99 UI fonts (Chinese sans / serif / kai-fangsong / display plus Latin serif / sans / display) and 31 code fonts, with CJK-Latin pairing stacks, instant apply and localStorage persistence",
   "license": "MIT",
   "author": "看客之眼 <361876798whyr@sina.com>",
@@ -15,11 +15,13 @@
     "index.js",
     "client.js",
     "cordis.patch.yml",
+    "test",
     "README.md"
   ],
   "scripts": {
     "check": "node --check index.js && node --check client.js",
-    "test": "node test/smoke.mjs"
+    "test": "node test/smoke.mjs",
+    "test:install": "node test/install-check.mjs"
   },
   "keywords": [
     "deepseek-harness",
