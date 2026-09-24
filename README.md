@@ -38,7 +38,7 @@
 
 ### 版本兼容
 
-- 面向 **DSH Desktop 2.0.x**（客户端模块基座 `@deepseek-ai/dsh-client-store ≥ 0.1.2-alpha`；
+- 面向 **DSH Desktop 2.0.x**（客户端模块基座 `@deepseek-ai/dsh-client-store ≥ 0.1.2-rc.1`；
   本仓库按随包的 `0.1.5-rc.1` 校验）。
 - 浏览器半侧的 `require` 只依赖 shell 的**冻结静态模块表**
   （`react` / `react/jsx-runtime` / `@deepseek-ai/dsh-client-store`），不引入任何额外运行时依赖。
@@ -67,8 +67,6 @@
 ---
 
 ## 字体清单
-
-> 清单由 `client.js` 的字体目录直接生成，与代码保持同步。
 
 ### 界面字体 / UI fonts
 
@@ -107,9 +105,6 @@ Comic Sans MS、Brush Script MT、Lucida Handwriting、Segoe Script、Segoe Prin
 共 30 项等宽字体：
 
 Consolas、Cascadia Code、Cascadia Mono、JetBrains Mono、Fira Code、Fira Mono、Source Code Pro、IBM Plex Mono、Roboto Mono、Ubuntu Mono、Inconsolata、Hack、Droid Sans Mono、DejaVu Sans Mono、Liberation Mono、PT Mono、Space Mono、Victor Mono、Iosevka、Maple Mono、SF Mono、Menlo、Monaco、Meslo、Courier New、Cousine、更纱黑体 Sarasa Mono SC、等距更纱黑体 Sarasa Term SC、思源等宽 Noto Sans Mono、霞鹜文楷等宽 LXGW WenKai Mono
-
-`LXGW WenKai Mono` 的栈里回退到 `KaiTi` 以保证中文对齐；若装了「霞鹜文楷等宽」等可选字体，
-会出现得比回退字体更靠前。
 
 ---
 
@@ -190,6 +185,7 @@ CSS 契约。
 
 ### 变更记录
 
+- **V1.0.2** — 优化依赖描述及校验。
 - **v1.0.1** — 修复「设置页正常但换字体毫无效果」：注入的规则原本写成
   `:root:root, body:body { … }`，其中 `body:body` 是**非法选择器**（复合选择器里类型选择器
   只能出现一次），而选择器列表里只要有一个非法选择器就会被浏览器整条丢弃 —— 规则
@@ -203,35 +199,6 @@ CSS 契约。
   中英双语文案，`localStorage` 持久化。
 
 ---
-
-## 错误与风险
-
-已经核对过的点：
-
-| 项 | 结论 |
-| --- | --- |
-| `require` 解析 | `react`、`react/jsx-runtime`、`@deepseek-ai/dsh-client-store` 全在 shell 的静态模块表（`PLATFORM_MODULES`）里，无未解析依赖 |
-| 与服务/事件交互 | 只用 `ctx.slots` / `ctx.locale` / `ctx.effect`，都已在 `inject` 中声明或是 cordis 生命周期 API；未使用未声明的 `ctx.xxx` |
-| 分区注册契约 | `settings.section` 是 `list` slot，需要 `id`；`label` 用 thunk 以便跟随语言切换；`inject(actions)` 的返回值即分区 props，与 shell 的 `standardKit` 一致 |
-| `defineStore` 用法 | 与随包的 `@deepseek-ai/dsh-client-store` 同形（`init` + `actions` 草稿改写）；`store` 句柄经 `register` 的 store 席位解析为 `useStore` + `actions`，分区组件拿到 uSES 选择器 hook |
-| CSS 优先级 | 两条独立规则：`:root:root`（0,2,0）压过基座 `:root`（0,1,0）；`html body`（0,0,2）把声明落到 `body` 本身，让 body 上声明、在 body 上做 `var()` 替换的 `--dsw-font-*` token 跟随；均带 `!important`。冒烟测试断言「一条选择器一条规则 / 只有合法选择器 / 不含重复简单选择器」，防止再写回 `body:body` |
-| 选择器合法性 | 已用真实 Chromium 验证：`:root:root`、`html body` 合法；`body:body` 非法，且会让所在选择器列表**整条规则**被丢弃（这正是 v1.0.0 失效的原因） |
-| 数据来源 | 字体栈全部是仓库内的字面量，不含用户输入，不存在 CSS 注入面；`localStorage` 读写都有 try/catch，隐私模式/超额时仅退化为「本次会话内有效」 |
-| 生命周期 | 样式元素由 `ctx.effect` 清理；选择失败（未知 id）按默认值处理，不抛错 |
-
-仍需留意的点：
-
-- **`immediately: true`（启动期加载）**：换字体要在首屏前生效，代价是 bundle 物化失败会
-  拖挂整个 Web GUI 启动。因此不要混合新旧 DSH 版本使用；若启动白屏，先看控制台是否有
-  `client-modules` / 模块解析报错，再回退到不加载本插件的 profile。
-- **`dsh.client.inject: ["@deepseek-ai/dsh-client-locale"]`**：该包随 web profile 组合提供，
-  正常情况恒在；但如果你在同一个 profile 里把 `@deepseek-ai/dsh-client-locale` 那一行 row 禁用掉，
-  组合会报「缺失提供方」。要么保留 locale row，要么删掉这行 `inject`。
-- **字体是否真的存在**：插件只输出 `font-family` 名称，实际渲染取决于本机安装的字体。
-  未安装时按钮/下拉里仍是这个名字，但画面会回退到栈内下一个字体（这是设计行为，不是 bug）。
-- **上游改名风险**：变量名 `--dsw-font-family` / `--ds-font-family-code` 取自当前
-  `ui-theme` 基座；DSH 若重命名这两个变量，本插件会静默失效（界面不换肤但不报错）。
-  升级 DSH 后如发现失效，按 `--dsw-font-*` token 的实际 `var()` 指向改名即可。
 
 ## 字体授权声明
 
